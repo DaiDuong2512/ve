@@ -211,9 +211,8 @@
     
     // State
     let strokes = []; // Array of { points: [{x, y, color}] }
+    let activeStrokes = new Map(); // Support multi-touch
     let removingStrokes = []; // Strokes currently animating out
-    let currentStroke = null;
-    let isDrawing = false;
     let hue = 0; // Current rainbow hue
 
     
@@ -341,146 +340,157 @@
 
     window.addEventListener('resize', resizeCanvas);
 
-    function getPointerPos(e) {
-        if (e.touches && e.touches.length > 0) {
-            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        }
-        return { x: e.clientX, y: e.clientY };
+    function getPointerPos(e, touch) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = touch ? touch.clientX : e.clientX;
+        const clientY = touch ? touch.clientY : e.clientY;
+        return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+        };
     }
 
     function startDraw(e) {
-        if(e.target.closest('.btn')) return; // Ignore buttons
+        if(e.target.closest('.btn')) return; 
         
         e.preventDefault();
-        isDrawing = true;
-        const pos = getPointerPos(e);
+        const touches = e.changedTouches ? e.changedTouches : [e];
+        const rect = canvas.getBoundingClientRect();
 
-        cursor.style.transform = 'translate(-50%, -50%) scale(0.5)';
-        cursor.style.background = 'white';
+        for (let i = 0; i < touches.length; i++) {
+            const t = touches[i];
+            const id = (t.identifier !== undefined) ? t.identifier : "mouse";
+            const pos = getPointerPos(e, t);
 
-        hue = (hue + 10) % 360;
-        const color = `hsl(${hue}, 100%, 65%)`; // Slightly brighter for dark theme
+            // Update virtual cursor accurately
+            const clientX = t.clientX || e.clientX;
+            const clientY = t.clientY || e.clientY;
+            cursor.style.left = clientX + 'px';
+            cursor.style.top = clientY + 'px';
+            cursor.style.transform = 'translate(-50%, -50%) scale(0.5)';
+            cursor.style.background = 'white';
 
-        currentStroke = {
-            points: [{x: pos.x, y: pos.y, color: color}],
-            lineWidth: LINE_WIDTH,
-            lastMid: {x: pos.x, y: pos.y}
-        };
-        strokes.push(currentStroke);
+            hue = (hue + 15) % 360;
+            const color = `hsl(${hue}, 100%, 65%)`;
 
-        drawDot(pos, color);
-        playSound();
+            const stroke = {
+                points: [{x: pos.x, y: pos.y, color: color}],
+                lineWidth: LINE_WIDTH,
+                lastMid: {x: pos.x, y: pos.y}
+            };
+            
+            activeStrokes.set(id, stroke);
+            strokes.push(stroke);
+            estimatedArea += Math.PI * (LINE_WIDTH / 2) ** 2; // Add dot area
+            redraw(); 
+            playSound();
+        }
     }
 
     function moveDraw(e) {
-        if (!isDrawing) return;
+        const touches = e.changedTouches ? e.changedTouches : [e];
         e.preventDefault();
-        const pos = getPointerPos(e);
-        
-        const lastPoint = currentStroke.points[currentStroke.points.length - 1];
-        const dist = Math.hypot(pos.x - lastPoint.x, pos.y - lastPoint.y);
-        
-        // Threshold check to prevent point accumulation on slow movement or jitter
-        if (dist < 4) {
-            // If movement is negligible, lower the sound gain to dampen "still" noise
-            if (activeSound) {
-                activeSound.gainNode.gain.setTargetAtTime(0.01, audioCtx.currentTime, 0.1);
-            }
-            return;
-        }
 
-        hue = (hue + 2) % 360; // Slower hue transition for more coherence
-        const color = `hsl(${hue}, 100%, 65%)`;
-        const newPoint = {x: pos.x, y: pos.y, color: color};
-        currentStroke.points.push(newPoint);
-
-        const mid = {
-            x: (lastPoint.x + newPoint.x) / 2,
-            y: (lastPoint.y + newPoint.y) / 2
-        };
-
-        ctx.beginPath();
-        ctx.moveTo(currentStroke.lastMid.x, currentStroke.lastMid.y);
-        ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, mid.x, mid.y);
-        
-        ctx.strokeStyle = lastPoint.color; 
-        ctx.lineWidth = LINE_WIDTH;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        // Subtle glow
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = lastPoint.color;
-        ctx.stroke();
-
-        // Audio Variation based on speed
-        if (activeSound) {
-            const speed = Math.min(dist / 10, 2);
-            const targetGain = 0.02 + (speed * 0.06); 
-            const targetFreq = 1000 + (speed * 1000); 
+        for (let i = 0; i < touches.length; i++) {
+            const t = touches[i];
+            const id = (t.identifier !== undefined) ? t.identifier : "mouse";
+            const currentStroke = activeStrokes.get(id);
             
-            activeSound.gainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.05);
-            activeSound.filter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.05);
-        }
+            if (!currentStroke) continue;
 
-        currentStroke.lastMid = mid;
+            const pos = getPointerPos(e, t);
+            
+            // Update virtual cursor for movement
+            const clientX = t.clientX || e.clientX;
+            const clientY = t.clientY || e.clientY;
+            cursor.style.left = clientX + 'px';
+            cursor.style.top = clientY + 'px';
 
-        estimatedArea += dist * LINE_WIDTH;
-        updateCoverageUI(); 
+            const lastPoint = currentStroke.points[currentStroke.points.length - 1];
+            const dist = Math.hypot(pos.x - lastPoint.x, pos.y - lastPoint.y);
+            
+            if (dist < 4) {
+                if (activeSound) activeSound.gainNode.gain.setTargetAtTime(0.01, audioCtx.currentTime, 0.1);
+                continue;
+            }
 
-        // Live Tail Removal: Trim slightly while moving to maintain flow without being too fast
-        const totalPixels = canvas.width * canvas.height;
-        // Only start trimming if we are slightly ABOVE the limit to provide a buffer
-        if (estimatedArea > totalPixels * MAX_COVERAGE_RATIO * 1.05) {
-            removeOldestPoints(1); // Remove only 1 point at a time for a slower, natural flow
+            hue = (hue + 2) % 360;
+            const color = `hsl(${hue}, 100%, 65%)`;
+            const newPoint = {x: pos.x, y: pos.y, color: color};
+            currentStroke.points.push(newPoint);
+
+            const mid = {
+                x: (lastPoint.x + newPoint.x) / 2,
+                y: (lastPoint.y + newPoint.y) / 2
+            };
+
+            // Audio Variation
+            if (activeSound) {
+                const speed = Math.min(dist / 10, 2);
+                const targetGain = 0.02 + (speed * 0.06); 
+                const targetFreq = 1000 + (speed * 1000); 
+                activeSound.gainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.05);
+                activeSound.filter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.05);
+            }
+
+            currentStroke.lastMid = mid;
+            estimatedArea += dist * LINE_WIDTH;
+            
+            // Live Tail Removal
+            const totalPixels = canvas.width * canvas.height;
+            if (estimatedArea > totalPixels * MAX_COVERAGE_RATIO * 1.05) {
+                removeOldestPoints(1); 
+            }
             redraw(); 
         }
     }
 
     function removeOldestPoints(count) {
         let removedCount = 0;
+        const activeStrokeSet = new Set(activeStrokes.values());
+        
         while (removedCount < count && strokes.length > 0) {
             const oldest = strokes[0];
-            
-            // Don't remove points from the stroke we are currently drawing
-            if (oldest === currentStroke && isDrawing && oldest.points.length < 20) {
-                break; 
-            }
+            if (activeStrokeSet.has(oldest) && oldest.points.length < 30) break; // Keep active strokes longer
 
             if (oldest.points.length > 1) {
+                const p1 = oldest.points[0];
+                const p2 = oldest.points[1];
+                const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                estimatedArea -= d * oldest.lineWidth; 
+                
                 oldest.points.splice(0, 1);
                 removedCount++;
             } else {
+                if (oldest.points.length === 1) {
+                    estimatedArea -= Math.PI * (oldest.lineWidth / 2) ** 2;
+                }
                 strokes.shift();
                 removedCount++;
             }
         }
-        // Area estimate will be corrected in the next checkCoverage (heavy check) 
-        // but for live flow, we just keep trimming.
     }
 
     function endDraw(e) {
-        if (!isDrawing) return;
-        e.preventDefault();
-        isDrawing = false;
+        const touches = e.changedTouches ? e.changedTouches : [e];
 
-        cursor.style.transform = 'translate(-50%, -50%) scale(1)';
-        cursor.style.background = 'transparent';
-
-        if (currentStroke && currentStroke.points.length > 1) {
-             const lastP = currentStroke.points[currentStroke.points.length - 1];
-             ctx.beginPath();
-             ctx.moveTo(currentStroke.lastMid.x, currentStroke.lastMid.y);
-             ctx.lineTo(lastP.x, lastP.y);
-             ctx.strokeStyle = lastP.color;
-             ctx.lineWidth = LINE_WIDTH;
-             ctx.lineCap = 'round';
-             ctx.shadowBlur = 15;
-             ctx.shadowColor = lastP.color;
-             ctx.stroke();
+        for (let i = 0; i < touches.length; i++) {
+            const t = touches[i];
+            const id = (t.identifier !== undefined) ? t.identifier : "mouse";
+            const currentStroke = activeStrokes.get(id);
+            
+            if (currentStroke) {
+                activeStrokes.delete(id);
+            }
         }
 
-        stopSound();
+        if (activeStrokes.size === 0) {
+            stopSound();
+            cursor.style.transform = 'translate(-50%, -50%) scale(1)';
+            cursor.style.background = 'transparent';
+        }
+        
+        redraw();
         checkCoverage();
     }
 
@@ -555,80 +565,83 @@
         ctx.restore();
     }
 
+    let needsRedraw = false;
+
     function redraw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        let newArea = 0;
-        
-        // Draw standard strokes
-        strokes.forEach(s => {
-            drawStroke(s);
-            // Accurate estimation for the UI bar and trimming logic
-            if (s.points.length > 1) {
-                for (let i = 1; i < s.points.length; i++) {
-                    const d = Math.hypot(s.points[i].x - s.points[i-1].x, s.points[i].y - s.points[i-1].y);
-                    newArea += d * s.lineWidth;
-                }
-            } else if (s.points.length === 1) {
-                newArea += Math.PI * (s.lineWidth / 2) ** 2;
-            }
-        });
-        estimatedArea = newArea;
-        updateCoverageUI();
-
-        // Draw animating strokes
-        removingStrokes.forEach((rs, index) => {
-            rs.life -= 0.02; // Progress life
-            if (rs.life <= 0) {
-                removingStrokes.splice(index, 1);
-                return;
-            }
-
-            let opacity = rs.life;
-            let offset = {x: 0, y: 0};
-            
-            if (rs.type === 'shatter') {
-                offset.y = (1 - rs.life) * 50; // Fall down
-                offset.x = (Math.sin(rs.life * 10) * 10); // Shake
-            } else if (rs.type === 'magical') {
-                opacity = Math.abs(Math.sin(rs.life * 15)) * rs.life; // Flicker
-                offset.y = -(1 - rs.life) * 30; // Float up
-            }
-            
-            drawStroke(rs.stroke, opacity, offset);
-        });
-
-        if (removingStrokes.length > 0) {
-            requestAnimationFrame(redraw);
-        }
+        needsRedraw = true;
     }
+
+    function renderLoop() {
+        if (needsRedraw) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw standard strokes
+            for (let i = 0; i < strokes.length; i++) {
+                drawStroke(strokes[i]);
+            }
+
+            // Draw animating strokes
+            for (let i = removingStrokes.length - 1; i >= 0; i--) {
+                const rs = removingStrokes[i];
+                rs.life -= 0.02; 
+                if (rs.life <= 0) {
+                    removingStrokes.splice(i, 1);
+                    continue;
+                }
+
+                let opacity = rs.life;
+                let offset = {x: 0, y: 0};
+                
+                if (rs.type === 'shatter') {
+                    offset.y = (1 - rs.life) * 50;
+                    offset.x = (Math.sin(rs.life * 10) * 10);
+                } else if (rs.type === 'magical') {
+                    opacity = Math.abs(Math.sin(rs.life * 15)) * rs.life;
+                    offset.y = -(1 - rs.life) * 30;
+                }
+                
+                drawStroke(rs.stroke, opacity, offset);
+            }
+            
+            updateCoverageUI();
+            needsRedraw = false;
+        }
+        
+        // Keep animating if there are strokes fading out
+        if (removingStrokes.length > 0) {
+            needsRedraw = true;
+        }
+        
+        requestAnimationFrame(renderLoop);
+    }
+
+    // Start the loop
+    requestAnimationFrame(renderLoop);
 
     function checkCoverage() {
         const totalPixels = canvas.width * canvas.height;
-        if (estimatedArea > totalPixels * MAX_COVERAGE_RATIO) {
+        // Periodic check to sync estimate with reality
+        if (estimatedArea > totalPixels * MAX_COVERAGE_RATIO * 0.8) {
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
             let nonBlackCount = 0;
             
-            // Sample for real coverage
-            for (let i = 0; i < data.length; i += 4 * 10) {
+            for (let i = 0; i < data.length; i += 4 * 20) { // Sparse sampling
                 if (data[i] > 10 || data[i+1] > 10 || data[i+2] > 10) nonBlackCount++;
             }
             
-            const totalSampled = (data.length / 4) / 10;
+            const totalSampled = (data.length / 4) / 20;
             const ratio = nonBlackCount / totalSampled;
-
+            estimatedArea = ratio * totalPixels; // Recalibrate
+            
             if (ratio > MAX_COVERAGE_RATIO) {
-                // Safety net: if still over limit, trim in bigger chunks to avoid infinite loop
-                // but only after the brush has stopped (endDraw)
                 let safetyCounter = 0;
-                while (estimatedArea > totalPixels * MAX_COVERAGE_RATIO && strokes.length > 0 && safetyCounter < 100) {
+                while (estimatedArea > totalPixels * MAX_COVERAGE_RATIO && strokes.length > 0 && safetyCounter < 50) {
                     removeOldestPoints(10); 
-                    redraw(); // redraw updates estimatedArea
                     safetyCounter++;
                 }
+                redraw(); 
             }
-            estimatedArea = ratio * totalPixels;
-            updateCoverageUI();
         }
     }
 
