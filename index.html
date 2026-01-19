@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Vẽ Tranh 7 Màu</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="manifest" href="manifest.json">
+    <title>VẼ TRANH</title>
     <style>
         :root {
             --primary-glow: rgba(255, 255, 255, 0.15);
@@ -48,7 +53,22 @@
             display: flex;
             gap: 15px;
             pointer-events: none;
-            transition: opacity 0.5s ease;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Virtual Rotation Classes for iPhone/iOS */
+        .rotated-landscape {
+            transform: translateX(-50%) rotate(-90deg) !important;
+            bottom: 50% !important;
+            left: 40px !important;
+        }
+
+        .rotated-item {
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .rotated-landscape .rotated-item {
+            transform: rotate(90deg);
         }
 
         .btn {
@@ -169,13 +189,13 @@
     <div id="canvas-container">
         <div id="coverage-bar"><div id="coverage-fill"></div></div>
         <div id="ui-layer">
-            <button class="btn" id="btn-fullscreen" title="Fullscreen">
+            <button class="btn rotated-item" id="btn-fullscreen" title="Fullscreen">
                 <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
             </button>
-            <button class="btn" id="btn-rotate" title="Landscape">
+            <button class="btn rotated-item" id="btn-rotate" title="Landscape">
                 <svg viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             </button>
-            <button class="btn" id="btn-clear" title="Clear">
+            <button class="btn rotated-item" id="btn-clear" title="Clear">
                 <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
             </button>
         </div>
@@ -210,6 +230,7 @@
     const btnFullscreen = document.getElementById('btn-fullscreen');
     const btnRotate = document.getElementById('btn-rotate');
     const btnClear = document.getElementById('btn-clear');
+    const uiLayer = document.getElementById('ui-layer');
     const coverageFill = document.getElementById('coverage-fill');
     const cursor = document.getElementById('cursor');
 
@@ -615,23 +636,32 @@
      * FULLSCREEN & ROTATION
      */
     function toggleFullscreen() {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(err => {
-                console.log(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-            });
+        const doc = document.documentElement;
+        const request = doc.requestFullscreen || doc.webkitRequestFullscreen || doc.mozRequestFullScreen || doc.msRequestFullscreen;
+        const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            if (request) {
+                request.call(doc).catch(err => {
+                    console.error("Fullscreen error:", err);
+                });
+            } else {
+                alert("iPhone không hỗ trợ Fullscreen trực tiếp trong Safari. Hãy xoay ngang điện thoại hoặc 'Thêm vào màn hình chính' (Add to Home Screen) để vẽ toàn màn hình!");
+            }
         } else {
-            document.exitFullscreen();
+            if (exit) exit.call(document);
         }
     }
 
     function rotateScreen() {
-        // Try Screen Orientation API
+        // Try Screen Orientation API (Android/Chrome)
         if (screen.orientation && screen.orientation.lock) {
             screen.orientation.lock("landscape").catch(function(error) {
-                alert("Thiết bị không hỗ trợ khóa xoay tự động hoặc cần quyền Fullscreen trước.");
+                alert("Hãy xoay ngang điện thoại của bạn!");
             });
         } else {
-            alert("Xoay điện thoại ngang để có trải nghiệm tốt nhất!");
+            // Fallback for iOS/Older browsers
+            alert("Trên iPhone: Vui lòng mở khóa xoay trong Trung tâm điều khiển và quay ngang máy để vẽ nhé!");
         }
     }
 
@@ -665,20 +695,43 @@
 
     btnFullscreen.addEventListener('click', toggleFullscreen);
     btnRotate.addEventListener('click', () => {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().then(() => {
-                rotateScreen();
-            }).catch(() => {
-                rotateScreen();
-            });
-        } else {
+        // Virtual Rotation for UI (Ideal for iPhone/iOS)
+        uiLayer.classList.toggle('rotated-landscape');
+        
+        // Also try standard rotation if supported
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
             rotateScreen();
+        }
+    });
+
+    // Handle Orientation Change for iPhone Safari
+    window.addEventListener('orientationchange', () => {
+        setTimeout(resizeCanvas, 200);
+        // If user actually rotates the phone, reset virtual rotation to avoid confusion
+        if (uiLayer.classList.contains('rotated-landscape')) {
+            uiLayer.classList.remove('rotated-landscape');
         }
     });
 
     // Init
     resizeCanvas();
 
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registered'))
+                .catch(err => console.log('Service Worker registration failed', err));
+        });
+    }
+
+    // Handle Android Installation Prompt
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // Optionally show an install button here if you want a custom UI
+    });
 
 </script>
 </body>
