@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Vẽ Tranh 7 Màu</title>
+    <style>
+        :root {
+            --primary-glow: rgba(255, 255, 255, 0.15);
+            --bg-color: #050505;
+            --glass-bg: rgba(20, 20, 20, 0.7);
+            --accent: #fff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            overflow: hidden;
+            touch-action: none;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+            color: white;
+        }
+
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: none;
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+        }
+
+        #ui-layer {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 15px;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        .btn {
+            pointer-events: auto;
+            background: var(--glass-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.8);
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            cursor: pointer;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .btn:hover {
+            background: rgba(40, 40, 40, 0.9);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* Coverage Indicator */
+        #coverage-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            z-index: 20;
+        }
+        #coverage-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(to right, #00f2fe, #4facfe, #9400D3);
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px rgba(79, 172, 254, 0.8);
+        }
+
+        /* Start Overlay */
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+            transition: opacity 0.8s ease, visibility 0.8s;
+        }
+
+        .title-glow {
+            font-size: 2.5rem;
+            font-weight: 200;
+            letter-spacing: 8px;
+            margin-bottom: 40px;
+            background: linear-gradient(45deg, #fff, #888);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        .instruction {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 20px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* Custom Cursor for elegant feel */
+        #cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            transition: width 0.2s, height 0.2s, background 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="cursor"></div>
+
+    <div id="start-overlay">
+        <h1 class="title-glow">PRISM FLOW</h1>
+        <button class="btn" id="btn-start" style="padding: 18px 45px; font-size: 15px;">Enter Experience</button>
+        <p class="instruction">Optimized for touch & motion</p>
+    </div>
+
+    <div id="canvas-container">
+        <div id="coverage-bar"><div id="coverage-fill"></div></div>
+        <div id="ui-layer">
+            <button class="btn" id="btn-fullscreen" title="Fullscreen">
+                <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+            </button>
+            <button class="btn" id="btn-rotate" title="Landscape">
+                <svg viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+            <button class="btn" id="btn-clear" title="Clear">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            </button>
+        </div>
+        <canvas id="canvas"></canvas>
+    </div>
+
+<script>
+    /**
+     * CONFIGURATION
+     */
+    const MAX_COVERAGE_RATIO = 0.1; // 10% as requested
+    const LINE_WIDTH = 3;
+    
+    // State
+    let strokes = []; // Array of { points: [{x, y, color}] }
+    let removingStrokes = []; // Strokes currently animating out
+    let currentStroke = null;
+    let isDrawing = false;
+    let hue = 0; // Current rainbow hue
+
+    
+    // estimatedArea maintains the approximate pixels drawn.
+    // This is faster than getImageData but counts overlaps.
+    // We will use a stricter cleanup when this limit is hit.
+    let estimatedArea = 0; 
+
+    // DOM Elements
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const startOverlay = document.getElementById('start-overlay');
+    const btnStart = document.getElementById('btn-start');
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+    const btnRotate = document.getElementById('btn-rotate');
+    const btnClear = document.getElementById('btn-clear');
+    const coverageFill = document.getElementById('coverage-fill');
+    const cursor = document.getElementById('cursor');
+
+    /**
+     * CURSOR SYSTEM
+     */
+    document.addEventListener('mousemove', (e) => {
+        cursor.style.left = e.clientX + 'px';
+        cursor.style.top = e.clientY + 'px';
+    });
+
+    /**
+     * AUDIO SYSTEM (Web Audio API)
+     * Generates a soft brush-like white noise.
+     */
+    let audioCtx;
+    let gainNode;
+    let noiseBuffer;
+
+    function initAudio() {
+        if (audioCtx) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+
+        // Create white noise buffer
+        const bufferSize = audioCtx.sampleRate * 2; // 2 seconds
+        noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+    }
+
+    function startBrushSound() {
+        if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = noiseBuffer;
+        noise.loop = true;
+
+        // Pencil-like filter
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1500; 
+        filter.Q.value = 0.5;
+
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0; 
+
+        noise.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        noise.start();
+        
+        return { noise, gainNode, filter }; 
+    }
+
+    // Effect Sound for Removal
+    function playRemovalSound() {
+        if (!audioCtx) return;
+        const oscillator = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(440 + Math.random() * 440, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.3);
+        
+        g.gain.setValueAtTime(0.02, audioCtx.currentTime); // Tiny volume
+        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+        
+        oscillator.connect(g);
+        g.connect(audioCtx.destination);
+        
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.3);
+    }
+
+    let activeSound = null;
+
+    function playSound() {
+        if (!activeSound) {
+            activeSound = startBrushSound();
+        }
+        // Very low initial volume for pencil
+        if (activeSound) {
+            activeSound.gainNode.gain.setTargetAtTime(0.04, audioCtx.currentTime, 0.05);
+        }
+    }
+
+    function stopSound() {
+        if (activeSound) {
+            activeSound.gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+        }
+    }
+
+
+    /**
+     * DRAWING LOGIC
+     */
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        redraw(); // Keep drawings on resize
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    function getPointerPos(e) {
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function startDraw(e) {
+        if(e.target.closest('.btn')) return; // Ignore buttons
+        
+        e.preventDefault();
+        isDrawing = true;
+        const pos = getPointerPos(e);
+
+        cursor.style.transform = 'translate(-50%, -50%) scale(0.5)';
+        cursor.style.background = 'white';
+
+        hue = (hue + 10) % 360;
+        const color = `hsl(${hue}, 100%, 65%)`; // Slightly brighter for dark theme
+
+        currentStroke = {
+            points: [{x: pos.x, y: pos.y, color: color}],
+            lineWidth: LINE_WIDTH,
+            lastMid: {x: pos.x, y: pos.y}
+        };
+        strokes.push(currentStroke);
+
+        drawDot(pos, color);
+        playSound();
+    }
+
+    function moveDraw(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        const pos = getPointerPos(e);
+        
+        const lastPoint = currentStroke.points[currentStroke.points.length - 1];
+        const dist = Math.hypot(pos.x - lastPoint.x, pos.y - lastPoint.y);
+        
+        // Threshold check to prevent point accumulation on slow movement or jitter
+        if (dist < 4) {
+            // If movement is negligible, lower the sound gain to dampen "still" noise
+            if (activeSound) {
+                activeSound.gainNode.gain.setTargetAtTime(0.01, audioCtx.currentTime, 0.1);
+            }
+            return;
+        }
+
+        hue = (hue + 2) % 360; // Slower hue transition for more coherence
+        const color = `hsl(${hue}, 100%, 65%)`;
+        const newPoint = {x: pos.x, y: pos.y, color: color};
+        currentStroke.points.push(newPoint);
+
+        const mid = {
+            x: (lastPoint.x + newPoint.x) / 2,
+            y: (lastPoint.y + newPoint.y) / 2
+        };
+
+        ctx.beginPath();
+        ctx.moveTo(currentStroke.lastMid.x, currentStroke.lastMid.y);
+        ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, mid.x, mid.y);
+        
+        ctx.strokeStyle = lastPoint.color; 
+        ctx.lineWidth = LINE_WIDTH;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        // Subtle glow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = lastPoint.color;
+        ctx.stroke();
+
+        // Audio Variation based on speed
+        if (activeSound) {
+            const speed = Math.min(dist / 10, 2);
+            const targetGain = 0.02 + (speed * 0.06); 
+            const targetFreq = 1000 + (speed * 1000); 
+            
+            activeSound.gainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.05);
+            activeSound.filter.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.05);
+        }
+
+        currentStroke.lastMid = mid;
+
+        estimatedArea += dist * LINE_WIDTH;
+        updateCoverageUI(); 
+
+        // Live Tail Removal: Trim slightly while moving to maintain flow without being too fast
+        const totalPixels = canvas.width * canvas.height;
+        // Only start trimming if we are slightly ABOVE the limit to provide a buffer
+        if (estimatedArea > totalPixels * MAX_COVERAGE_RATIO * 1.05) {
+            removeOldestPoints(1); // Remove only 1 point at a time for a slower, natural flow
+            redraw(); 
+        }
+    }
+
+    function removeOldestPoints(count) {
+        let removedCount = 0;
+        while (removedCount < count && strokes.length > 0) {
+            const oldest = strokes[0];
+            
+            // Don't remove points from the stroke we are currently drawing
+            if (oldest === currentStroke && isDrawing && oldest.points.length < 20) {
+                break; 
+            }
+
+            if (oldest.points.length > 1) {
+                oldest.points.splice(0, 1);
+                removedCount++;
+            } else {
+                strokes.shift();
+                removedCount++;
+            }
+        }
+        // Area estimate will be corrected in the next checkCoverage (heavy check) 
+        // but for live flow, we just keep trimming.
+    }
+
+    function endDraw(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        isDrawing = false;
+
+        cursor.style.transform = 'translate(-50%, -50%) scale(1)';
+        cursor.style.background = 'transparent';
+
+        if (currentStroke && currentStroke.points.length > 1) {
+             const lastP = currentStroke.points[currentStroke.points.length - 1];
+             ctx.beginPath();
+             ctx.moveTo(currentStroke.lastMid.x, currentStroke.lastMid.y);
+             ctx.lineTo(lastP.x, lastP.y);
+             ctx.strokeStyle = lastP.color;
+             ctx.lineWidth = LINE_WIDTH;
+             ctx.lineCap = 'round';
+             ctx.shadowBlur = 15;
+             ctx.shadowColor = lastP.color;
+             ctx.stroke();
+        }
+
+        stopSound();
+        checkCoverage();
+    }
+
+    const updateCoverageUI = () => {
+        const total = canvas.width * canvas.height;
+        const percent = Math.min(100, (estimatedArea / (total * MAX_COVERAGE_RATIO)) * 100);
+        coverageFill.style.width = percent + '%';
+    };
+
+    function drawDot(pos, color, opacity = 1) {
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, LINE_WIDTH / 2, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = color;
+        ctx.fill();
+        ctx.restore();
+        if (opacity === 1) estimatedArea += Math.PI * (LINE_WIDTH / 2) ** 2;
+    }
+
+    function drawStroke(stroke, opacity = 1, offset = {x: 0, y: 0}) {
+        if (stroke.points.length === 0) return;
+
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.translate(offset.x, offset.y);
+        ctx.lineWidth = stroke.lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (stroke.points.length === 1) {
+            const p = stroke.points[0];
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, stroke.lineWidth / 2, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = p.color;
+            ctx.fill();
+        } else {
+            let p1 = stroke.points[0];
+            let lastMid = p1;
+
+            for (let i = 1; i < stroke.points.length; i++) {
+                const p2 = stroke.points[i];
+                const mid = {
+                    x: (p1.x + p2.x) / 2,
+                    y: (p1.y + p2.y) / 2
+                };
+
+                ctx.beginPath();
+                ctx.moveTo(lastMid.x, lastMid.y);
+                ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
+                
+                ctx.strokeStyle = p1.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = p1.color;
+                ctx.stroke();
+
+                lastMid = mid;
+                p1 = p2;
+            }
+
+            const lastP = stroke.points[stroke.points.length - 1];
+            ctx.beginPath();
+            ctx.moveTo(lastMid.x, lastMid.y);
+            ctx.lineTo(lastP.x, lastP.y);
+            ctx.strokeStyle = lastP.color;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    function redraw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let newArea = 0;
+        
+        // Draw standard strokes
+        strokes.forEach(s => {
+            drawStroke(s);
+            // Accurate estimation for the UI bar and trimming logic
+            if (s.points.length > 1) {
+                for (let i = 1; i < s.points.length; i++) {
+                    const d = Math.hypot(s.points[i].x - s.points[i-1].x, s.points[i].y - s.points[i-1].y);
+                    newArea += d * s.lineWidth;
+                }
+            } else if (s.points.length === 1) {
+                newArea += Math.PI * (s.lineWidth / 2) ** 2;
+            }
+        });
+        estimatedArea = newArea;
+        updateCoverageUI();
+
+        // Draw animating strokes
+        removingStrokes.forEach((rs, index) => {
+            rs.life -= 0.02; // Progress life
+            if (rs.life <= 0) {
+                removingStrokes.splice(index, 1);
+                return;
+            }
+
+            let opacity = rs.life;
+            let offset = {x: 0, y: 0};
+            
+            if (rs.type === 'shatter') {
+                offset.y = (1 - rs.life) * 50; // Fall down
+                offset.x = (Math.sin(rs.life * 10) * 10); // Shake
+            } else if (rs.type === 'magical') {
+                opacity = Math.abs(Math.sin(rs.life * 15)) * rs.life; // Flicker
+                offset.y = -(1 - rs.life) * 30; // Float up
+            }
+            
+            drawStroke(rs.stroke, opacity, offset);
+        });
+
+        if (removingStrokes.length > 0) {
+            requestAnimationFrame(redraw);
+        }
+    }
+
+    function checkCoverage() {
+        const totalPixels = canvas.width * canvas.height;
+        if (estimatedArea > totalPixels * MAX_COVERAGE_RATIO) {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            let nonBlackCount = 0;
+            
+            // Sample for real coverage
+            for (let i = 0; i < data.length; i += 4 * 10) {
+                if (data[i] > 10 || data[i+1] > 10 || data[i+2] > 10) nonBlackCount++;
+            }
+            
+            const totalSampled = (data.length / 4) / 10;
+            const ratio = nonBlackCount / totalSampled;
+
+            if (ratio > MAX_COVERAGE_RATIO) {
+                // Safety net: if still over limit, trim in bigger chunks to avoid infinite loop
+                // but only after the brush has stopped (endDraw)
+                let safetyCounter = 0;
+                while (estimatedArea > totalPixels * MAX_COVERAGE_RATIO && strokes.length > 0 && safetyCounter < 100) {
+                    removeOldestPoints(10); 
+                    redraw(); // redraw updates estimatedArea
+                    safetyCounter++;
+                }
+            }
+            estimatedArea = ratio * totalPixels;
+            updateCoverageUI();
+        }
+    }
+
+    /**
+     * FULLSCREEN & ROTATION
+     */
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                console.log(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }
+
+    function rotateScreen() {
+        // Try Screen Orientation API
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock("landscape").catch(function(error) {
+                alert("Thiết bị không hỗ trợ khóa xoay tự động hoặc cần quyền Fullscreen trước.");
+            });
+        } else {
+            alert("Xoay điện thoại ngang để có trải nghiệm tốt nhất!");
+        }
+    }
+
+    // Event Listeners
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', moveDraw);
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('mouseout', endDraw);
+
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', moveDraw, { passive: false });
+    canvas.addEventListener('touchend', endDraw, { passive: false });
+
+    btnStart.addEventListener('click', () => {
+        initAudio();
+        startOverlay.style.opacity = '0';
+        setTimeout(() => {
+            startOverlay.style.visibility = 'hidden';
+        }, 800);
+        resizeCanvas();
+    });
+
+    btnClear.addEventListener('click', () => {
+        playRemovalSound(); // Sound only when manual clear
+        strokes = [];
+        removingStrokes = [];
+        estimatedArea = 0;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        updateCoverageUI();
+    });
+
+    btnFullscreen.addEventListener('click', toggleFullscreen);
+    btnRotate.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().then(() => {
+                rotateScreen();
+            }).catch(() => {
+                rotateScreen();
+            });
+        } else {
+            rotateScreen();
+        }
+    });
+
+    // Init
+    resizeCanvas();
+
+
+</script>
+</body>
+</html>
