@@ -1,4 +1,4 @@
-const CACHE_NAME = 'prism-flow-cache-v4';
+const CACHE_NAME = 'prism-flow-cache-v5';
 const ASSETS_TO_CACHE = [
   'index.html',
   'manifest.json'

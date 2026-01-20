@@ -126,6 +126,17 @@
             transition: opacity 0.8s ease, visibility 0.8s;
         }
 
+        @media screen and (orientation: landscape) and (max-height: 500px) {
+            body::after {
+                content: "Vui lòng xoay dọc điện thoại";
+                position: fixed;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background: #000; z-index: 9999;
+                display: flex; align-items: center; justify-content: center;
+                color: #fff; font-size: 1.2rem; letter-spacing: 2px;
+            }
+        }
+
         .title-glow {
             font-size: 2.5rem;
             font-weight: 200;
@@ -618,9 +629,22 @@
 
     btnStart.addEventListener('click', () => {
         initAudio();
-        if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock('portrait').catch(() => {});
-        }
+        
+        // Android Orientation Lock Strategy
+        const lockOrientation = () => {
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('portrait').catch(() => {});
+            }
+        };
+
+        // Attempt lock immediately
+        lockOrientation();
+
+        // Request Fullscreen (often required for orientation lock on Android Chrome)
+        const doc = document.documentElement;
+        if (doc.requestFullscreen) doc.requestFullscreen().then(lockOrientation).catch(() => {});
+        else if (doc.webkitRequestFullscreen) doc.webkitRequestFullscreen();
+
         startOverlay.style.opacity = '0';
         setTimeout(() => {
             startOverlay.style.visibility = 'hidden';
