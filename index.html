@@ -618,6 +618,9 @@
 
     btnStart.addEventListener('click', () => {
         initAudio();
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('portrait').catch(() => {});
+        }
         startOverlay.style.opacity = '0';
         setTimeout(() => {
             startOverlay.style.visibility = 'hidden';
