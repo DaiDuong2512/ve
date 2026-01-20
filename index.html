@@ -203,6 +203,46 @@
     let strokes = [], backgroundStrokes = [], activeStrokes = new Map(), removingStrokes = [];
     let hue = 0, isLocked = false, estimatedArea = 0; 
 
+    // Persistence with throttling
+    let saveTimeout;
+    const saveData = () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            try {
+                const data = {
+                    strokes,
+                    backgroundStrokes,
+                    estimatedArea,
+                    isLocked
+                };
+                localStorage.setItem('prism_flow_data', JSON.stringify(data));
+            } catch (e) {
+                console.error('Save failed', e);
+            }
+        }, 500); // Save at most once every 500ms
+    };
+
+    const loadData = () => {
+        try {
+            const saved = localStorage.getItem('prism_flow_data');
+            if (saved) {
+                const data = JSON.parse(saved);
+                strokes = data.strokes || [];
+                backgroundStrokes = data.backgroundStrokes || [];
+                estimatedArea = data.estimatedArea || 0;
+                isLocked = !!data.isLocked;
+                
+                // Update UI state for lock button
+                if (btnLock) {
+                    btnLock.style.backgroundColor = isLocked ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.1)';
+                }
+                redraw();
+            }
+        } catch (e) {
+            console.error('Load failed', e);
+        }
+    };
+
     const $ = id => document.getElementById(id);
     const canvas = $('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
     const startOverlay = $('start-overlay'), btnStart = $('btn-start'), btnFullscreen = $('btn-fullscreen');
@@ -409,6 +449,7 @@
                 const initialArea = estimatedArea;
                 removeOldestPoints(1); 
                 if (estimatedArea >= initialArea) break;
+                saveData(); // Throttled save
             }
             redraw(); 
         }
@@ -478,6 +519,7 @@
             stopSound();
             cursor.style.transform = 'translate(-50%, -50%) scale(1)';
             cursor.style.background = 'transparent';
+            saveData(); // Save when all fingers are up
         }
         
         redraw();
@@ -488,19 +530,6 @@
         const percent = Math.min(100, (estimatedArea / (total * MAX_COVERAGE_RATIO)) * 100);
         coverageFill.style.width = percent + '%';
     };
-
-    function drawDot(pos, color, opacity = 1) {
-        ctx.save();
-        ctx.globalAlpha = opacity;
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, LINE_WIDTH / 2, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = color;
-        ctx.fill();
-        ctx.restore();
-        if (opacity === 1) estimatedArea += Math.PI * (LINE_WIDTH / 2) ** 2;
-    }
 
     function drawStroke(stroke, opacity = 1, offset = {x: 0, y: 0}) {
         if (stroke.points.length === 0) return;
@@ -569,6 +598,7 @@
                 });
                 estimatedArea = Math.max(0, estimatedArea - (s.addedArea || 0));
                 strokes.splice(i, 1);
+                saveData(); // Save after transient stroke removal
                 needsRedraw = true;
             }
         }
@@ -660,6 +690,7 @@
         estimatedArea = 0;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         updateCoverageUI();
+        saveData(); // Clear saved data too
     });
 
     btnFullscreen.addEventListener('click', toggleFullscreen);
@@ -671,6 +702,7 @@
             backgroundStrokes = [...backgroundStrokes, ...strokes];
             strokes = [];
         }
+        saveData(); // Save state
         redraw();
     });
 
@@ -679,6 +711,7 @@
     });
 
     resizeCanvas();
+    loadData(); // Load previous artwork
 
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
